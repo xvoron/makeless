@@ -3,19 +3,21 @@ from typing import Optional
 import torch
 import torch.nn as nn
 from torch.nn import functional as F
-from tqdm import tqdm
 
 
 
-block_size = 8
+block_size = 256
 batch_size = 64
-epoch = 10000
-lr = 1e-2
+epoch = 5000
+lr = 3e-4
 max_iters = 3000
 eval_interval = 300
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 eval_iters = 200
-n_embed = 32
+n_embed = 384
+n_layers = 6
+n_heads = 6
+dropout = .2
 
 
 torch.manual_seed(1337)
@@ -69,12 +71,83 @@ def estimate_loss():
     return out
 
 
+class Head(nn.Module):
+    def __init__(self, head_size: int):
+        super().__init__()
+        self.key = nn.Linear(n_embed, head_size, bias=False)
+        self.query = nn.Linear(n_embed, head_size, bias=False)
+        self.value = nn.Linear(n_embed, head_size, bias=False)
+        self.register_buffer('tril', torch.tril(torch.ones(block_size, block_size)))
+
+        self.dropout = nn.Dropout(dropout)
+
+    def forward(self, x: torch.Tensor):
+        _, T, C = x.shape
+        k = self.key(x)
+        q = self.query(x)
+
+        weight = q @ k.transpose(-2, -1) * C ** -0.5
+        weight = weight.masked_fill(self.tril[:T, :T] == 0, float('-inf'))
+        weight = F.softmax(weight, dim=-1)
+        weight = self.dropout(weight)
+
+        v = self.value(x)
+
+        return weight @ v
+
+
+class MultiHeadAttention(nn.Module):
+    def __init__(self, num_heads: int, head_size: int):
+        super().__init__()
+        self.heads = nn.ModuleList([Head(head_size) for _ in range(num_heads)])
+        self.proj = nn.Linear(num_heads * head_size, n_embed)
+
+    def forward(self, x: torch.Tensor):
+        output =  torch.cat([head(x) for head in self.heads], dim=-1)
+
+        # Linear projection
+        return self.proj(output)
+
+
+class FeedForward(nn.Module):
+    def __init__(self, n_embed: int):
+        super().__init__()
+        self.net = nn.Sequential(
+                # 4 * n_embed is a hyperparameter from the paper
+                nn.Linear(n_embed, 4 * n_embed),
+                nn.ReLU(),
+                nn.Linear(4 * n_embed, n_embed),
+                nn.Dropout(dropout),
+                )
+
+    def forward(self, x: torch.Tensor):
+        return self.net(x)
+
+
+class Block(nn.Module):
+    def __init__(self, n_embed: int, n_heads: int):
+        super().__init__()
+        head_size = n_embed // n_heads
+        self.sa_heads = MultiHeadAttention(n_heads, head_size)
+        self.ff = FeedForward(n_embed)
+        self.ln1 = nn.LayerNorm(n_embed)
+        self.ln2 = nn.LayerNorm(n_embed)
+
+    def forward(self, x: torch.Tensor):
+        # residual connection
+        x = x + self.sa_heads(self.ln1(x))
+        x = x + self.ff(self.ln2(x))
+        return x
+
 
 class BigramLanguageModel(nn.Module):
     def __init__(self):
         super().__init__()
         self.token_embedding_table = nn.Embedding(vocab_size, n_embed)
         self.position_embedding_table = nn.Embedding(block_size, n_embed)
+
+        self.blocks = nn.Sequential(*[Block(n_embed, n_heads) for _ in range(n_layers)]) 
+        self.ln_f = nn.LayerNorm(n_embed)
         self.lm_head = nn.Linear(n_embed, vocab_size)
 
     def forward(self, idx: torch.Tensor, targets: Optional[torch.Tensor] = None):
@@ -96,6 +169,9 @@ class BigramLanguageModel(nn.Module):
         pos_emb = self.position_embedding_table(torch.arange(T, device=device))
 
         x = token_emb + pos_emb # (B, T, C)
+
+        x = self.blocks(x)
+        x = self.ln_f(x)
         logits = self.lm_head(x)
 
         if targets is None:
@@ -112,8 +188,10 @@ class BigramLanguageModel(nn.Module):
     def generate(self, idx, max_new_tokens):
         # idx has shape (B, T)
         for _ in range(max_new_tokens):
+            # crop idx to the last block_size tokens
+            idx_cond = idx[:, -block_size:]
             # (B, T, C)
-            logits, _ = self(idx)
+            logits, _ = self(idx_cond)
             # We take only the last T 
             logits = logits[:, -1, :]  # (B, C)
 

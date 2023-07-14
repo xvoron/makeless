@@ -47,3 +47,6 @@ weights = weights.masked_fill(tril == 0, float('-inf'))
 weights = F.softmax(weights, dim=-1)
 xbow3 = weights @ x
 print(torch.allclose(xbow, xbow3))
+
+
+
