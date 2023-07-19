@@ -19,6 +19,8 @@ n_layers = 6
 n_heads = 6
 dropout = .2
 
+checkpoints = './checkpoints'
+
 
 torch.manual_seed(1337)
 
@@ -85,13 +87,16 @@ class Head(nn.Module):
         _, T, C = x.shape
         k = self.key(x)
         q = self.query(x)
+        v = self.value(x)
 
-        weight = q @ k.transpose(-2, -1) * C ** -0.5
+        dk = C ** 0.5
+
+        # mask only bottom triangle (model can't see the future)
+        weight = q @ k.transpose(-2, -1) / dk
         weight = weight.masked_fill(self.tril[:T, :T] == 0, float('-inf'))
+
         weight = F.softmax(weight, dim=-1)
         weight = self.dropout(weight)
-
-        v = self.value(x)
 
         return weight @ v
 
@@ -202,29 +207,40 @@ class BigramLanguageModel(nn.Module):
 
         return idx
 
-model = BigramLanguageModel().to(device)
 
-optimizer = torch.optim.AdamW(model.parameters(), lr=lr)
-
-
-# write loss to progress bar
-# progress = tqdm(range(epoch), total=epoch, desc='Loss: ')
+def save_weights(model: nn.Module, path: str):
+    torch.save(model.state_dict(), path)
 
 
-for step in range(epoch):
-    xb, yb = get_batch('train')
-
-    if step % eval_interval == 0:
-        losses = estimate_loss()
-        report = f"{step}: train {losses['train']:.4f}, val {losses['val']:.4f}"
-        print(report)
-        # progress.set_description(report)
-
-    logits, loss = model(xb, yb)
-    optimizer.zero_grad(set_to_none=True)
-    loss.backward()
-    optimizer.step()
+def load_weights(model: nn.Module, path: str):
+    model.load_state_dict(torch.load(path))
 
 
-idx = torch.zeros((1, 1), dtype=torch.long, device=device)
-print(decode(model.generate(idx, max_new_tokens=200)[0].tolist()))
+if __name__ == "__main__":
+
+    model = BigramLanguageModel().to(device)
+
+    optimizer = torch.optim.AdamW(model.parameters(), lr=lr)
+
+
+    # write loss to progress bar
+    # progress = tqdm(range(epoch), total=epoch, desc='Loss: ')
+    for step in range(epoch):
+        xb, yb = get_batch('train')
+
+        if step % eval_interval == 0:
+            losses = estimate_loss()
+            report = f"{step}: train {losses['train']:.4f}, val {losses['val']:.4f}"
+            print(report)
+
+            save_weights(model, f"{checkpoints}/model_{step}.pt")
+            # progress.set_description(report)
+
+        logits, loss = model(xb, yb)
+        optimizer.zero_grad(set_to_none=True)
+        loss.backward()
+        optimizer.step()
+
+
+    idx = torch.zeros((1, 1), dtype=torch.long, device=device)
+    print(decode(model.generate(idx, max_new_tokens=200)[0].tolist()))
