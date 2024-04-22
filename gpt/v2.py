@@ -4,19 +4,21 @@ import torch
 import torch.nn as nn
 from torch.nn import functional as F
 
+from base import cut_corpus, get_corpus, get_vocab
 
 
-block_size = 256
+
+block_size = 10
 batch_size = 64
-epoch = 5000
-lr = 3e-4
-max_iters = 3000
-eval_interval = 300
+epoch = 10
+lr = 5e-3
+max_iters = 10000
+eval_interval = 100
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
-eval_iters = 200
-n_embed = 384
-n_layers = 6
-n_heads = 6
+eval_iters = 10
+n_embed = 128
+n_layers = 3
+n_heads = 3
 dropout = .2
 
 checkpoints = './checkpoints'
@@ -24,22 +26,16 @@ checkpoints = './checkpoints'
 
 torch.manual_seed(1337)
 
-
-with open('./tinyshakespeare.txt', 'r') as f:
-    text = f.read()
-
-
-chars = sorted(list(set(text)))
-vocab_size = len(chars)
-
-stoi = {ch: i for i, ch in enumerate(chars)}
-itos = {i: ch for i, ch in enumerate(chars)}
+corpus = get_corpus()
+vocab, stoi, itos = get_vocab(corpus)
+vocab_size = len(vocab)
+words = cut_corpus(corpus, vocab)
 
 encode = lambda s: [stoi[c] for c in s]
-decode = lambda l: ''.join([itos[i] for i in l])
+decode = lambda l: ' '.join([itos[i] for i in l])
 
 
-data = torch.tensor(encode(text), dtype=torch.long)
+data = torch.tensor(encode(words), dtype=torch.long)
 
 n = int(.9 * len(data))
 train_data = data[:n]
@@ -145,7 +141,7 @@ class Block(nn.Module):
         return x
 
 
-class BigramLanguageModel(nn.Module):
+class GPT(nn.Module):
     def __init__(self):
         super().__init__()
         self.token_embedding_table = nn.Embedding(vocab_size, n_embed)
@@ -217,23 +213,27 @@ def load_weights(model: nn.Module, path: str):
 
 
 if __name__ == "__main__":
+    from torch.utils.tensorboard import SummaryWriter
+    import datetime
 
-    model = BigramLanguageModel().to(device)
+    model = GPT().to(device)
+    sw = SummaryWriter(f'runs/gpt_{datetime.datetime.now().isoformat()}')
 
     optimizer = torch.optim.AdamW(model.parameters(), lr=lr)
 
 
     # write loss to progress bar
     # progress = tqdm(range(epoch), total=epoch, desc='Loss: ')
-    for step in range(epoch):
+    for i in range(max_iters):
         xb, yb = get_batch('train')
 
-        if step % eval_interval == 0:
+        if i % eval_interval == 0:
             losses = estimate_loss()
-            report = f"{step}: train {losses['train']:.4f}, val {losses['val']:.4f}"
+            report = f"{i}: train {losses['train']:.4f}, val {losses['val']:.4f}"
+            sw.add_scalar('loss/train', losses['train'], i)
             print(report)
 
-            save_weights(model, f"{checkpoints}/model_{step}.pt")
+            # save_weights(model, f"{checkpoints}/model_{step}.pt")
             # progress.set_description(report)
 
         logits, loss = model(xb, yb)
@@ -242,5 +242,6 @@ if __name__ == "__main__":
         optimizer.step()
 
 
+
     idx = torch.zeros((1, 1), dtype=torch.long, device=device)
-    print(decode(model.generate(idx, max_new_tokens=200)[0].tolist()))
+    print(decode(model.generate(idx, max_new_tokens=20)[0].tolist()))
