@@ -10,12 +10,16 @@ class Ngram:
         self.vocab = vocab
         self.stoi = {word: i for i, word in enumerate(vocab)}
         self.itos = {i: word for i, word in enumerate(vocab)}
+
+        # n-gram n-dimensional tensor
         self.ngrams = torch.zeros([len(vocab)] * n)
 
     def train(self, text: list[str]):
+        # There is no training for n-gram model in the traditional ml sense
+        # We just count the n-grams in the text and normalize them
         for i in range(len(text) - self.n + 1):
-            indeces = [self.stoi[text[j]] for j in range(i, i + self.n)]
-            self.ngrams[tuple(indeces)] += 1
+            indices = [self.stoi[text[j]] for j in range(i, i + self.n)]
+            self.ngrams[tuple(indices)] += 1
 
         self.ngrams += 1
         self.ngrams /= self.ngrams.sum(-1, keepdim=True)
@@ -28,6 +32,7 @@ class Ngram:
         for _ in range(length):
             context = [self.stoi[word] for word in sentence[-self.n+1:]]
             next_word_probs = self.ngrams[tuple(context)]
+            # Sample next word from the distribution
             next_word_idx = torch.multinomial(next_word_probs, 1).item()
             sentence.append(self.itos[int(next_word_idx)])
 

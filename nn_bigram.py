@@ -3,7 +3,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from base import Dataset, cut_corpus, get_corpus, get_vocab, train_loop, val_loop
+from base import Dataset, cut_corpus, get_corpus, get_vocab, train_loop
 from utils import plot_embedding
 
 
@@ -54,7 +54,7 @@ if __name__ == "__main__":
     data = torch.tensor([stoi[start_word]]).unsqueeze(0)
     print([itos[int(d)] for d in model.generate(data, 10).squeeze(0)])
 
-    fig = plot_embedding(words, model.token_embedding_table, stoi)
-    fig.savefig("bigram_nnlm.png")
-    plt.show()
+    # fig = plot_embedding(words, model.token_embedding_table, stoi)
+    # fig.savefig("bigram_nnlm.png")
+    # plt.show()
 

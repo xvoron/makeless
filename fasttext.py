@@ -3,7 +3,9 @@ from collections import Counter
 import numpy as np
 import torch
 import torch.nn as nn
-from base import Dataset, UNK, PAD, get_corpus, get_vocab, cut_corpus
+
+from base import Dataset, PAD, UNK, cut_corpus, get_corpus, get_vocab
+
 
 SOF = "<"
 EOF = ">"
