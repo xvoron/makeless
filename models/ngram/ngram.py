@@ -1,7 +1,7 @@
 import torch
 
-from base import cut_corpus, get_corpus, get_vocab, preprocess
-from utils import lev
+from models.base import cut_corpus, get_corpus, get_vocab, preprocess
+from models.utils import lev
 
 
 class Ngram:
@@ -95,8 +95,8 @@ class Index:
 
 if __name__ == "__main__":
 
-    corpus = get_corpus()[:10000]
-    vocab, stoi, itos = get_vocab(corpus, 1000)
+    corpus = get_corpus()
+    vocab, stoi, itos = get_vocab(corpus, 2000)
     words = cut_corpus(corpus, vocab)
 
 
