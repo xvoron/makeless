@@ -1,3 +1,4 @@
+from __future__ import annotations
 from collections import Counter
 import re
 
@@ -11,16 +12,6 @@ PAD = '<pad>'
 
 STOI = dict[str, int]
 ITOS = dict[int, str]
-
-
-def lev(a, b) -> int:
-    if not a:
-        return len(b)
-    if not b:
-        return len(a)
-    if a[0] == b[0]:
-        return lev(a[1:], b[1:])
-    return 1 + min(lev(a[1:], b), lev(a, b[1:]), lev(a[1:], b[1:]))
 
 
 def text_preprocessor(text: str) -> str:
@@ -90,6 +81,15 @@ class Ngram:
         self.ngrams /= self.ngrams.sum(dim=-1, keepdim=True).clamp(min=1e-8)
         return self
 
+    def get_features(self) -> torch.Tensor:
+        return self.ngrams
+
+    @classmethod
+    def from_ngram(cls, ngram: Ngram):
+        return cls(ngram.n, ngram.vocab, ngram.stoi, ngram.itos)
+
+
+class NgramGenerator(Ngram):
     def generate(self, sentence: list[str], length: int = 10) -> str:
         if len(sentence) < self.n - 1:
             sentence = [PAD] * (self.n - 1 - len(sentence)) + sentence
@@ -103,6 +103,8 @@ class Ngram:
 
         return ' '.join(sentence)
 
+
+class NgramCorrector(Ngram):
     def correct_spelling(self, context: list[str], word: str) -> str:
         if len(context) < self.n - 1:
             context = [PAD] * (self.n - 1 - len(context)) + context
@@ -123,8 +125,16 @@ class Ngram:
         probs = self.ngrams[query_idx]
         return probs.mean().item()
 
-    def get_features(self) -> torch.Tensor:
-        return self.ngrams
+
+
+def lev(a, b) -> int:
+    if not a:
+        return len(b)
+    if not b:
+        return len(a)
+    if a[0] == b[0]:
+        return lev(a[1:], b[1:])
+    return 1 + min(lev(a[1:], b), lev(a, b[1:]), lev(a[1:], b[1:]))
 
 
 class Index:
@@ -172,8 +182,8 @@ if __name__ == "__main__":
 
     context = ['krčmář', 'dojel', 'v']
     target = 'hromadem'
-    print(f"Text generation for 'krčmář dojel v' : {ngram_model.generate(context.copy())}")
-    print(f"Correct spelling for {target}: {ngram_model.correct_spelling(context.copy(), target)}")
+    print(f"Text generation for 'krčmář dojel v' : {NgramGenerator.from_ngram(ngram_model).generate(context.copy())}")
+    print(f"Correct spelling for {target}: {NgramCorrector.from_ngram(ngram_model).correct_spelling(context.copy(), target)}")
 
 
     doc1_content = "The quick brown fox jumps over the lazy dog"

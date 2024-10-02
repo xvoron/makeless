@@ -11,8 +11,10 @@ words in the corpus using gradient descent.
 """
 from collections import Counter
 import datetime
+import re
 
 import numpy as np
+import polars as pl
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -23,17 +25,46 @@ import tqdm
 UNK = '<unk>'
 PAD = '<pad>'
 
+STOI = dict[str, int]
+ITOS = dict[int, str]
 
-def get_vocab(corpus: str, vocab_size: int = 10000):
-    """get the vocabulary of the corpus"""
+
+def text_preprocessor(text: str) -> str:
+    text = text.lower()
+    text = re.sub(r'\W', ' ', text)
+    text = re.sub(r'\d', '', text)
+    return re.sub(r'\s+', ' ', text)
+
+
+def get_corpus() -> str:
+    """Get the corpus of the data as a string.
+
+    Note:
+        Use only the `rss_title` column.
+    """
+    data = pl.read_csv('./dataset/sportoclanky.csv')
+    data = data.select([
+        data['rss_title'],
+    ])
+    corpus = []
+    for row in data.iter_rows():
+        corpus.append(row[0])
+
+    return text_preprocessor(' '.join(corpus))
+
+
+def get_vocab(corpus: str, vocab_size: int = 10000) -> tuple[list[str], STOI, ITOS]:
     counts =  Counter(corpus.split())
     vocab = [word for word, _ in counts.most_common(vocab_size - 2)]
-    vocab = list(set(vocab))
-    vocab.append(PAD)
-    vocab.append(UNK)
+    vocab = list(set(vocab)) + [PAD, UNK]
     stoi = {word: i for i, word in enumerate(vocab)}
     itos = {i: word for word, i in stoi.items()}
     return vocab, stoi, itos
+
+
+def cut_corpus(corpus: str, vocab: list[str]) -> list[str]:
+    return [word if word in vocab else UNK for word in corpus.split()]
+
 
 
 def train_loop(
@@ -83,25 +114,6 @@ def val_loop(model: nn.Module,
         loss_tracker.append(loss.item())
     return np.mean(loss_tracker)
 
-def get_corpus():
-    """Get the corpus of the data as a string.
-
-    Note:
-        Use only the `rss_title` column.
-    """
-    data = get_data()
-    data = data.select([
-        data['rss_title'],
-    ])
-    corpus = []
-    for row in data.iter_rows():
-        corpus.append(row[0])
-
-    return preprocess(' '.join(corpus))
-
-
-def cut_corpus(corpus: str, vocab: list[str]):
-    return [word if word in vocab else UNK for word in corpus.split()]
 
 
 class Dataset(torch.utils.data.Dataset):
