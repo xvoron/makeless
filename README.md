@@ -8,6 +8,7 @@ work.
 
 
 # TODO
+
 - [ ] Review all the models:
     - [ ] ngram
     - [ ] glove
@@ -23,10 +24,9 @@ work.
 - [ ] Add more models:
     - [ ] RNN
     - [ ] LSTM
-    - [ ] GRU
     - [ ] Transformer
-    - [ ] bert
     - [ ] gpt
+    - [ ] bert
     - [ ] electra
     - [ ] retromae
 
