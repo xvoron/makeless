@@ -5,6 +5,7 @@ import numpy as np
 import polars as pl
 import torch
 import torch.nn as nn
+import tqdm
 
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -150,9 +151,9 @@ def split_to_subword(words, subword_len=3):
 
 if __name__ == '__main__':
 
-    corpus = get_corpus()
+    corpus = get_corpus()[:len(get_corpus())//5]
 
-    n_vocab = 1000
+    n_vocab = 3000
 
     vocab, stoi, itos = get_vocab(corpus, n_vocab)
     words = cut_corpus(corpus, vocab)
@@ -178,18 +179,18 @@ if __name__ == '__main__':
         i: s + [stoi_sub[PAD]] * (padding_length - len(s))
         for i, s in enumerate(subword_idx)}
 
-    model = FastText(n_subvocab=len(subvocab), n_vocab=len(vocab), n_grams=3, n_dim=100).to(device)
-    optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
+    model = FastText(n_subvocab=len(subvocab), n_vocab=len(vocab), n_grams=3, n_dim=64).to(device)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=1e-2)
     sheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=1, gamma=0.5)
     loss_fn = nn.BCEWithLogitsLoss()
 
     dataset = Dataset(X, Y)
-    dataloader = torch.utils.data.DataLoader(dataset, batch_size=64, shuffle=True, num_workers=4)
+    dataloader = torch.utils.data.DataLoader(dataset, batch_size=64, shuffle=False, num_workers=8)
 
     losses = []
     epochs = 10
     for e in range(epochs):
-        for x, y in dataloader:
+        for x, y in tqdm.tqdm(dataloader, total=len(dataloader), desc="Batches", leave=False):
             x, y = x.to(device), y.to(device)
             optimizer.zero_grad()
             y_pred = model(x)
@@ -198,7 +199,7 @@ if __name__ == '__main__':
             optimizer.step()
             losses.append(loss.item())
         sheduler.step()
-        print(f"Epoch {e+1}/{epochs}, Loss: {losses[-1]}")
+        print(f"Epoch {e+1}/{epochs}, Loss: {np.mean(losses)}")
 
 
     def plot_embedding(words, embedding, word_to_ix, top=150):
@@ -210,16 +211,16 @@ if __name__ == '__main__':
         from sklearn.manifold import TSNE
 
         counter = Counter(words)
-        
+
         test_words = counter.most_common(top)
         test_words_raw = [w for w, _ in test_words]
         test_words = [word_to_ix[w] for w in test_words_raw]
-        
+
         with torch.no_grad():
             embed_xy = embedding(torch.tensor(test_words)).detach().numpy()
             embed_xy = TSNE(n_components=2).fit_transform(embed_xy)
             embed_x, embed_y = list(zip(*embed_xy))
-        
+
         fig = plt.figure(figsize=(10, 10))
         for xy, word in zip(embed_xy, test_words_raw):
             plt.annotate(word, xy, clip_on=True, fontsize=14)
@@ -229,7 +230,7 @@ if __name__ == '__main__':
         plt.axhline([0], ls=":", c="grey")
         plt.axvline([0], ls=":", c="grey")
         return fig
-    
+
     model.eval()
     model.to('cpu')
     fig = plot_embedding(vocab, model.embedding_v, stoi)

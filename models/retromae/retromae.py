@@ -50,7 +50,6 @@ class Head(torch.nn.Module):
 
         weight = query @ key.transpose(-2, -1) / dk
 
-        # Adjust the mask to the current sequence length
         mask = self.mask[:T, :T]
         weight = weight.masked_fill(mask == 0, float('-inf'))
         weight = torch.nn.functional.softmax(weight, dim=-1)
@@ -62,9 +61,6 @@ class Head(torch.nn.Module):
 class MultiHeadAttention(torch.nn.Module):
     def __init__(self, num_heads: int, head_size: int, n_embed: int, block_size: int, dropout: float = 0.1):
         super().__init__()
-        # Create a mask for the attention mechanism
-        # in BERT model, the model can see the future so the mask is an 
-        # ones matrix
         mask = torch.ones(block_size, block_size)
         self.heads = torch.nn.ModuleList([Head(n_embed, head_size, mask, dropout) for _ in range(num_heads)])
         self.proj = torch.nn.Linear(num_heads * head_size, n_embed)
@@ -98,7 +94,6 @@ class Block(torch.nn.Module):
         self.ln2 = torch.nn.LayerNorm(n_embed)
 
     def forward(self, x: torch.Tensor):
-        # residual connection
         x = x + self.sa_heads(self.ln1(x))
         x = x + self.ff(self.ln2(x))
         return x

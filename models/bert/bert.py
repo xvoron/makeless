@@ -45,7 +45,6 @@ class TinyTokenizer:
             else:
                 tokens.extend([self.inv_vocab.get(c, self.inv_vocab[UNK]) for c in token])
 
-
         return tokens
 
     def detokenize(self, tokens: list[int]):
